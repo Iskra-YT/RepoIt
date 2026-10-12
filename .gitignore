@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+.env
+.env.local
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+apps/mobile/android/
+apps/mobile/ios/
