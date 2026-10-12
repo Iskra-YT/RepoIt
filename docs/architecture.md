@@ -1,18 +1,21 @@
 # Frontend architecture
 
-The mobile application is a thin, stateless client for the closed-source
-`repoit-backend` HTTP API. It stores only its own session token and local UI
-state; GitHub remains the source of truth for repository content.
+This document explains how the mobile application works and how it connects to
+the RepoIt API. The app is a thin, stateless client: it stores only its own
+session token and local UI state, and every feature it offers is backed by the
+HTTP API documented in [`docs/api.md`](api.md).
 
-## Goals relevant to the app
+## How the app works
 
-- One primary repository card at a time, vertical swipe navigation.
-- Visible actions: like, save, follow author, open on GitHub.
-- A small prefetch buffer keeps swiping responsive; cards are not duplicated
+- One primary repository card at a time, swiped vertically.
+- Visible actions: like, save, follow author, open on GitHub, "show me fewer
+  like this".
+- A small prefetch buffer keeps swiping responsive; cards are never duplicated
   and requests are not repeated needlessly.
 - Explicit loading, empty, offline and API-error states.
-- Sponsored entries look and behave distinctly and are labeled `Sponsored`.
-- Personalization controls: interests management, "show me fewer like this".
+- Sponsored entries are visually distinct and labeled `Sponsored`.
+- Personalization: interests management on first login (onboarding) and later
+  in the profile.
 
 ## Screens / navigation (Expo Router)
 
@@ -24,7 +27,18 @@ state; GitHub remains the source of truth for repository content.
 | `me` | Profile: interests, following list, liked/saved. |
 | `settings` | Logout, privacy toggles for public activity. |
 
-State shape of a feed card (JSON returned by `GET /api/v1/feed`):
+## How the app connects to the API
+
+- **Base URL:** `EXPO_PUBLIC_API_URL` env var (default `http://localhost:8080`).
+- **Session token:** issued by the API after GitHub sign-in, stored with
+  `expo-secure-store`, sent as `Authorization: Bearer <token>`.
+- **Sign-in:** the app opens the authorization URL the API returns from
+  `GET /api/v1/auth/start` and receives a session token back on the registered
+  redirect URI. The app never sees a GitHub client secret or a GitHub token.
+- **Feed:** `GET /api/v1/feed` returns pages of repository cards (shape below);
+  actions are `POST`/`DELETE` calls against the interaction endpoints.
+
+A feed card returned by `GET /api/v1/feed`:
 
 ```jsonc
 {
@@ -44,36 +58,32 @@ State shape of a feed card (JSON returned by `GET /api/v1/feed`):
     "owner": {"login": "rust-lang", "avatarUrl": "https://..."},
     "isFork": false, "isArchived": false
   },
-  "score": 4.2,           // explainable server-side relevance (debug/UI)
+  "score": 4.2,           // explainable relevance
   "reason": ["topic:documentation", "author:followed"]
 }
 ```
 
-## Data flow
+## Data flow inside the app
 
-1. App starts → reads session token from `expo-secure-store` → `GET /me`.
-   - `401` → run OAuth (`expo-auth-session`), backend redirects to GitHub,
-     then hands the app a session token via the registered redirect URI.
-2. Feed screen → loads first page of `GET /api/v1/feed?limit=20&cursor=...`.
-   - The client keeps at most 3 pages prefetched; page tokens (`cursor`) are
-     opaque.
-   - Swiping reveals existing cards; the next page is fetched when the buffer
-     drops below a threshold.
-3. Actions are real HTTP calls (`POST/DELETE like|save`, `POST feedback`,
-   `POST follow`) with optimistic UI + rollback on error.
-4. "Open on GitHub" uses `Linking.openURL` / `WebBrowser`; the backend observes
-   it via `POST /repositories/{id}/open` when possible.
+1. Startup → read session token from secure storage → `GET /me`.
+   - `401` → run the sign-in flow via the API.
+   - Fresh login but `me.onboarded == false` → open the onboarding screen.
+2. Feed screen → `GET /api/v1/feed?limit=20&cursor=...`; keep at most 3 pages
+   prefetched; refetch when the buffer drops below a threshold. Retries pass
+   `seen_ids` so no card is ever duplicated.
+3. Swiping and action buttons map 1:1 to HTTP calls with optimistic UI +
+   rollback on error.
+4. "Open on GitHub" uses `Linking.openURL` / `WebBrowser`, then notifies the
+   API via `POST /repositories/{id}/open`.
 
 ## Offline / error behavior
 
-- All requests go through one API client with typed errors (`ApiErrorKind`:
-  `unauthorized`, `rateLimited`, `network`, `server`, `notFound`).
+- One API client with typed errors (`unauthorized`, `rateLimited`, `network`,
+  `server`, `notFound`).
 - Network failures render an inline retry state instead of a silent dead feed.
-- The feed page request is idempotent: the client passes the last seen card ID
-  (`seen_ids`) so retries never duplicate cards.
 
 ## Theming and motion
 
 Minimal custom work: system fonts, a small color palette, a purely
-gesture-driven swipe (`react-native-gesture-handler` `Pan` + translation
-threshold). No elaborate animations in the MVP.
+gesture-driven swipe (`react-native-gesture-handler`). No elaborate
+animations in the MVP.

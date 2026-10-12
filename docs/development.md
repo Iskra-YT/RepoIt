@@ -1,23 +1,10 @@
 # Development workflow
 
-The frontend depends on the closed-source `repoit-backend`. To develop locally
-you need a running backend (either your own instance or one provided by the
-team) plus the OAuth application configured for your development environment.
+The app talks to the RepoIt API over HTTP. To develop locally you need a
+reachable API instance (your own or one provided to you), then point the app
+at it.
 
-## 1. Backend
-
-See `docs/deployment.md` in the `repoit-backend` repository. Quick version:
-
-```bash
-docker compose up -d                          # postgres + API
-curl http://localhost:8080/healthz            # -> ok
-```
-
-Your GitHub OAuth app must list a callback URL that the backend can use; for
-local development with the Expo proxy use variant B from
-`docs/github-oauth-setup.md`.
-
-## 2. Mobile app
+## 1. Run the app
 
 ```bash
 cd apps/mobile
@@ -26,18 +13,21 @@ EXPO_PUBLIC_API_URL=http://localhost:8080 npx expo start
 ```
 
 - On a physical device with **Expo Go**, open the QR code. The device must reach
-  the backend over the network — use your machine's LAN IP instead of
-  `localhost`, e.g. `EXPO_PUBLIC_API_URL=http://192.168.1.20:8080`.
+  the API over the network — use your machine's LAN IP, e.g.
+  `EXPO_PUBLIC_API_URL=http://192.168.1.20:8080`.
 - Android emulator: `http://10.0.2.2:8080`.
 - iOS simulator: `http://localhost:8080`.
 
-## 3. Deep links
+## 2. Connect to the API
 
-The OAuth flow finishes with a redirect to the app. In Expo Go the redirect URI
-is an `exp://...` URL; in a dev/production build it is `repoit://auth`. See
-`docs/github-oauth-setup.md` flow A/B.
+- The only thing the app needs to know is the API base URL
+  (`EXPO_PUBLIC_API_URL`).
+- Deep link note: the sign-in flow finishes with a redirect to the app. In
+  Expo Go the redirect URI is an `exp://...` URL; in dev/production builds it
+  is `repoit://auth`. The `GET /api/v1/auth/start` endpoint accepts
+  `redirect_uri` accordingly.
 
-## 4. Tests
+## 3. Tests
 
 ```bash
 cd apps/mobile
@@ -47,7 +37,7 @@ npm run test        # jest unit tests (pure logic: API client, state machines)
 
 The app contains no credentials and makes no network calls in tests.
 
-## 5. Committing
+## 4. Committing
 
-This repository (`Iskra-YT/RepoIt`) is AGPL-3.0 and open; the backend is
-closed source. Never copy backend code or commit backend secrets here.
+This repository (`Iskra-YT/RepoIt`) is AGPL-3.0. Never commit secrets or
+credentials of any kind here.
