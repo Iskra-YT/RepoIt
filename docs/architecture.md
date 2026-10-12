@@ -32,9 +32,13 @@ HTTP API documented in [`docs/api.md`](api.md).
 - **Base URL:** `EXPO_PUBLIC_API_URL` env var (default `http://localhost:8080`).
 - **Session token:** issued by the API after GitHub sign-in, stored with
   `expo-secure-store`, sent as `Authorization: Bearer <token>`.
-- **Sign-in:** the app opens the authorization URL the API returns from
-  `GET /api/v1/auth/start` and receives a session token back on the registered
-  redirect URI. The app never sees a GitHub client secret or a GitHub token.
+- **Sign-in (web flow):** the app opens the authorization URL the API returns
+  from `GET /api/v1/auth/start`; GitHub redirects through the API callback and
+  lands on the app's registered deep link with `code` + `github_id` (a
+  short-lived, single-use sign-in code — **never** the session token). The app
+  then calls `POST /api/v1/auth/session` with that code and receives the
+  session token in the JSON body. The app never sees a GitHub client secret or
+  a GitHub token, and the session token never travels in a URL.
 - **Feed:** `GET /api/v1/feed` returns pages of repository cards (shape below);
   actions are `POST`/`DELETE` calls against the interaction endpoints.
 
@@ -43,11 +47,11 @@ A feed card returned by `GET /api/v1/feed`:
 ```jsonc
 {
   "id": 101,
-  "position": 3,          // stable per response, for dedupe
+  "position": 3,          // stable per response, for rendering order
   "sponsored": false,     // true => render as sponsored, labeled
   "repository": {
-    "id": 771,            // internal repository id
-    "githubId": 12345678,
+    "id": 771,            // internal repository id: use this in all /repos paths
+    "githubId": 12345678, // informational only
     "fullName": "rust-lang/mdBook",
     "url": "https://github.com/rust-lang/mdBook",
     "description": "Create book from markdown files...",
@@ -63,18 +67,26 @@ A feed card returned by `GET /api/v1/feed`:
 }
 ```
 
+Repository identity is the internal `repository.id`; it is the key for every
+`/repos/{id}` interaction and is stable within an environment. `githubId` is
+the numeric GitHub id and is reference-only.
+
 ## Data flow inside the app
 
 1. Startup → read session token from secure storage → `GET /me`.
    - `401` → run the sign-in flow via the API.
    - Fresh login but `me.onboarded == false` → open the onboarding screen.
 2. Feed screen → `GET /api/v1/feed?limit=20&cursor=...`; keep at most 3 pages
-   prefetched; refetch when the buffer drops below a threshold. Retries pass
-   `seen_ids` so no card is ever duplicated.
+   prefetched; refetch when the buffer drops below a threshold. Echo the opaque
+   `cursor` untouched. Deduplication is the server's job (persisted seen
+   history + server-side page state), so the app never sends `seen_ids`.
 3. Swiping and action buttons map 1:1 to HTTP calls with optimistic UI +
-   rollback on error.
+   rollback on error. Interaction endpoints return the current state, so a
+   failed retry converges without a follow-up GET.
 4. "Open on GitHub" uses `Linking.openURL` / `WebBrowser`, then notifies the
-   API via `POST /repositories/{id}/open`.
+   API via `POST /repos/{id}/open`. This is a tap (click) signal, scored once;
+   it is not proof the GitHub page rendered, and the app shows its own loading
+   and error states for the browser sheet.
 
 ## Offline / error behavior
 
