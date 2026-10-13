@@ -33,16 +33,16 @@ HTTP API documented in [`docs/api.md`](api.md).
 - **Session token:** issued by the API after GitHub sign-in, stored with
   `expo-secure-store`, sent as `Authorization: Bearer <token>`.
 - **Sign-in (web flow):** the app opens the authorization URL the API returns
-  from `GET /api/v1/auth/start`; GitHub redirects through the API callback and
+  from `GET /v0/api/auth/start`; GitHub redirects through the API callback and
   lands on the app's registered deep link with `code` + `github_id` (a
   short-lived, single-use sign-in code — **never** the session token). The app
-  then calls `POST /api/v1/auth/session` with that code and receives the
+  then calls `POST /v0/api/auth/session` with that code and receives the
   session token in the JSON body. The app never sees a GitHub client secret or
   a GitHub token, and the session token never travels in a URL.
-- **Feed:** `GET /api/v1/feed` returns pages of repository cards (shape below);
+- **Feed:** `GET /v0/api/feed` returns pages of repository cards (shape below);
   actions are `POST`/`DELETE` calls against the interaction endpoints.
 
-A feed card returned by `GET /api/v1/feed`:
+A feed card returned by `GET /v0/api/feed`:
 
 ```jsonc
 {
@@ -76,7 +76,7 @@ the numeric GitHub id and is reference-only.
 1. Startup → read session token from secure storage → `GET /me`.
    - `401` → run the sign-in flow via the API.
    - Fresh login but `me.onboarded == false` → open the onboarding screen.
-2. Feed screen → `GET /api/v1/feed?limit=20&cursor=...`; keep at most 3 pages
+2. Feed screen → `GET /v0/api/feed?limit=20&cursor=...`; keep at most 3 pages
    prefetched; refetch when the buffer drops below a threshold. Echo the opaque
    `cursor` untouched. Deduplication is the server's job (persisted seen
    history + server-side page state), so the app never sends `seen_ids`.

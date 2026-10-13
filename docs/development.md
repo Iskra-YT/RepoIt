@@ -24,7 +24,7 @@ EXPO_PUBLIC_API_URL=http://localhost:8080 npx expo start
   (`EXPO_PUBLIC_API_URL`).
 - Deep link note: the sign-in flow finishes with a redirect to the app. In
   Expo Go the redirect URI is an `exp://...` URL; in dev/production builds it
-  is `repoit://auth`. The `GET /api/v1/auth/start` endpoint accepts
+  is `repoit://auth`. The `GET /v0/api/auth/start` endpoint accepts
   `redirect_uri` accordingly.
 
 ## 3. Tests

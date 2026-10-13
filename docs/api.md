@@ -1,7 +1,7 @@
 # HTTP API contract
 
 The mobile app is driven by the RepoIt HTTP API. This document is the contract
-the app is built against. All routes are versioned under `/api/v1` and return
+the app is built against. All routes are versioned under `/v0/api` and return
 JSON. Errors use this shape:
 
 ```jsonc
@@ -13,6 +13,16 @@ JSON. Errors use this shape:
 }
 ```
 
+Every endpoint below is served under two prefixes that behave **identically**:
+
+| Prefix | When it is available |
+| --- | --- |
+| `/v0/api` | the regular API (persistent storage) |
+| `/v0/dev` | a development mirror with the same endpoints, an ephemeral in-memory store, and `POST /auth/token` with `{ "code": "dev" }` for sign-in (no GitHub needed) |
+
+The app targets `/v0/api` in production; pointing `EXPO_PUBLIC_API_URL` at the
+dev mirror is a drop-in way to develop without a database.
+
 Authentication uses a bearer session token: `Authorization: Bearer <token>`.
 The token is issued by the API after GitHub sign-in and is short-lived and
 revocable. **A session token never appears in a URL or a redirect** — sign-in
@@ -22,11 +32,11 @@ codes are exchanged for tokens through the API (see Auth).
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/auth/start?redirect_uri=<app deep link>` | Returns `{ "authorizeUrl": "https://github.com/login/oauth/authorize?..." }`. State + PKCE are generated server-side; `redirect_uri` must exactly match one of the registered deep links. |
-| `GET` | `/api/v1/auth/callback?code=...&state=...` | Internal redirect endpoint. On success it redirects to the registered `redirect_uri` with `?code=<single-use sign-in code>&github_id=<numeric id>` — **never with the session token**. |
-| `POST` | `/api/v1/auth/session` | Body `{ "code": "<sign-in code from the deep link>" }`. Returns `{ "token": "..." }`. The code is single-use and expires after 2 minutes. |
-| `POST` | `/api/v1/auth/token` | Mobile flow: body `{ "code": "<GitHub auth code>", "state": "<returned state>" }`. Returns `{ "token": "..." }`. The API validates state + PKCE server-side before minting a session. |
-| `POST` | `/api/v1/auth/logout` | Revokes the current session. |
+| `GET` | `/v0/api/auth/start?redirect_uri=<app deep link>` | Returns `{ "authorizeUrl": "https://github.com/login/oauth/authorize?..." }`. State + PKCE are generated server-side; `redirect_uri` must exactly match one of the registered deep links. |
+| `GET` | `/v0/api/auth/callback?code=...&state=...` | Internal redirect endpoint. On success it redirects to the registered `redirect_uri` with `?code=<single-use sign-in code>&github_id=<numeric id>` — **never with the session token**. |
+| `POST` | `/v0/api/auth/session` | Body `{ "code": "<sign-in code from the deep link>" }`. Returns `{ "token": "..." }`. The code is single-use and expires after 2 minutes. |
+| `POST` | `/v0/api/auth/token` | Mobile flow: body `{ "code": "<GitHub auth code>", "state": "<returned state>" }`. Returns `{ "token": "..." }`. The API validates state + PKCE server-side before minting a session. |
+| `POST` | `/v0/api/auth/logout` | Revokes the current session. |
 
 The app picks one flow:
 
@@ -43,7 +53,7 @@ the registered allowlist (exact match).
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/feed?limit=20&cursor=<opaque>` | Page of recommendation cards (shape in `architecture.md`). Returns `{ cards, hasMore, cursor, degraded?, message? }`. |
+| `GET` | `/v0/api/feed?limit=20&cursor=<opaque>` | Page of recommendation cards (shape in `architecture.md`). Returns `{ cards, hasMore, cursor, degraded?, message? }`. |
 
 Pagination is **server-side**: echo the opaque `cursor` from the previous
 response as-is to fetch the next page. The server keeps the page state
@@ -58,11 +68,11 @@ the response was built from a fallback pool.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/repos/{id}` | Repository metadata + cached topics + the caller's interaction state. |
-| `POST` / `DELETE` | `/api/v1/repos/{id}/like` | Like / remove like. **Idempotent.** Both return the current state: `{ "liked": bool, "saved": bool, "disliked": bool, "stateChanged": bool }` — this lets the app retry safely and sync the UI without a follow-up GET. |
-| `POST` / `DELETE` | `/api/v1/repos/{id}/save` | Save / remove save. **Idempotent.** Same response shape as like. |
-| `POST` | `/api/v1/repos/{id}/open` | Signals the user *tapped the card to open the repository on GitHub* (a click signal, not proof the page loaded). Scored once per repository; `openCount` is informational. Same response shape as like. |
-| `POST` | `/api/v1/repos/{id}/feedback` | Body `{ "kind": "show_fewer" }` (explicit negative feedback). Any other kind is rejected with `400`. Same response shape as like. |
+| `GET` | `/v0/api/repos/{id}` | Repository metadata + cached topics + the caller's interaction state. |
+| `POST` / `DELETE` | `/v0/api/repos/{id}/like` | Like / remove like. **Idempotent.** Both return the current state: `{ "liked": bool, "saved": bool, "disliked": bool, "stateChanged": bool }` — this lets the app retry safely and sync the UI without a follow-up GET. |
+| `POST` / `DELETE` | `/v0/api/repos/{id}/save` | Save / remove save. **Idempotent.** Same response shape as like. |
+| `POST` | `/v0/api/repos/{id}/open` | Signals the user *tapped the card to open the repository on GitHub* (a click signal, not proof the page loaded). Scored once per repository; `openCount` is informational. Same response shape as like. |
+| `POST` | `/v0/api/repos/{id}/feedback` | Body `{ "kind": "show_fewer" }` (explicit negative feedback). Any other kind is rejected with `400`. Same response shape as like. |
 
 Repository identity: every interaction targets the **internal repository `id`**
 returned by the feed and detail endpoints. It is stable within an environment;
@@ -72,31 +82,31 @@ returned by the feed and detail endpoints. It is stable within an environment;
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `PUT` | `/api/v1/interests` | Replace interest topics. Body `{ "topics": ["embedded", "political-systems"] }`. |
-| `GET` | `/api/v1/interests` | Current interest topics + derived scores. |
+| `PUT` | `/v0/api/interests` | Replace interest topics. Body `{ "topics": ["embedded", "political-systems"] }`. |
+| `GET` | `/v0/api/interests` | Current interest topics + derived scores. |
 
 ## Profile & social
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/me` | `{ id, username, avatarUrl, onboarded, likedPublic, savedPublic }`. |
-| `PATCH` | `/api/v1/me` | Update profile flags (`onboarded`, `likedPublic`, `savedPublic`). |
-| `GET` | `/api/v1/me/following` | List of followed users. |
-| `GET` | `/api/v1/users/{id}` | Public profile: user, follow state, public likes/saves (honoring the user's privacy flags). |
-| `POST` / `DELETE` | `/api/v1/users/{id}/follow` | Follow / unfollow. Returns `{ user, isFollowing }`; idempotent. Self-follow is rejected with `400`. |
+| `GET` | `/v0/api/me` | `{ id, username, avatarUrl, onboarded, likedPublic, savedPublic }`. |
+| `PATCH` | `/v0/api/me` | Update profile flags (`onboarded`, `likedPublic`, `savedPublic`). |
+| `GET` | `/v0/api/me/following` | List of followed users. |
+| `GET` | `/v0/api/users/{id}` | Public profile: user, follow state, public likes/saves (honoring the user's privacy flags). |
+| `POST` / `DELETE` | `/v0/api/users/{id}/follow` | Follow / unfollow. Returns `{ user, isFollowing }`; idempotent. Self-follow is rejected with `400`. |
 
 ## Topics
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/topics/search?q=...&limit=...` | Prefix search over known topics (used by onboarding). |
+| `GET` | `/v0/api/topics/search?q=...&limit=...` | Prefix search over known topics (used by onboarding). |
 
 ## System
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/healthz` | **Liveness only:** `{ "status": "ok" }`. Public; intentionally leaks nothing about the environment. |
-| `GET` | `/api/v1/readyz` | **Readiness:** `{ "status": "ready"\|"unavailable", "checks": { "database": "ok"\|"unreachable" } }`. Minimal and safe to expose; use it to decide when to serve traffic. |
+| `GET` | `/v0/api/healthz` | **Liveness only:** `{ "status": "ok" }`. Public; intentionally leaks nothing about the environment. |
+| `GET` | `/v0/api/readyz` | **Readiness:** `{ "status": "ready"\|"unavailable", "checks": { "database": "ok"\|"unreachable" } }`. Minimal and safe to expose; use it to decide when to serve traffic. |
 
 ## Rate limiting
 
